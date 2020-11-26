@@ -7,10 +7,10 @@ use std::thread;
 
 fn handle_client(
     mut stream: TcpStream,
-    sender: Sender<(SocketAddr, String)>,
-    receiver: Receiver<String>,
-    peer_addr: SocketAddr,
-    sender_map: Arc<Mutex<HashMap<SocketAddr, Sender<String>>>>,
+    sender_agent: Sender<(SocketAddr, String)>, // agent sender for broadcast message to others
+    receiver: Receiver<String>, // broadcast receiver to get message from other client
+    peer_addr: SocketAddr,      // client addr
+    sender_map: Arc<Mutex<HashMap<SocketAddr, Sender<String>>>>, // handle for remove disconnected senders from sender_map
 ) {
     let mut data = [0 as u8; 50]; // using 50 byte buffer
 
@@ -38,7 +38,7 @@ fn handle_client(
             // echo everything!
             // stream.write(&data[0..size]).unwrap();
             let to_send = std::str::from_utf8(&data[0..size]).unwrap_or("?").into();
-            match sender.send((peer_addr.clone(), to_send)) {
+            match sender_agent.send((peer_addr.clone(), to_send)) {
                 Ok(_) => true,
                 Err(e) => {
                     println!("{}", e);
@@ -63,7 +63,7 @@ fn main() {
     // accept connections and process them, spawning a new thread for each one
     println!("Server listening on port 3333");
 
-    let (sender, recv_agent) = channel::<(SocketAddr, String)>();
+    let (sender_agent, recv_agent) = channel::<(SocketAddr, String)>();
     let sender_map: Arc<Mutex<HashMap<SocketAddr, Sender<String>>>> =
         Arc::new(Mutex::new(HashMap::new()));
     let sender_map_copy = sender_map.clone();
@@ -93,7 +93,7 @@ fn main() {
     });
 
     for stream in listener.incoming() {
-        let sender_copy = sender.clone();
+        let sender_agent_copy = sender_agent.clone();
         let (sender_in_map, recv) = channel();
         match stream {
             Ok(mut stream) => {
@@ -110,7 +110,7 @@ fn main() {
                     .insert(peer_addr.clone(), sender_in_map.clone());
                 thread::spawn(move || {
                     // connection succeeded
-                    handle_client(stream, sender_copy, recv, peer_addr, sender_map_copy)
+                    handle_client(stream, sender_agent_copy, recv, peer_addr, sender_map_copy)
                 });
             }
             Err(e) => {
