@@ -47,12 +47,15 @@ fn handle_client(
                 }
             }
         }
-        Err(_) => {
+        Err(e) => {
             println!(
-                "An error occurred, terminating connection with {}",
-                stream.peer_addr().unwrap()
+                "An error occurred {}", e
             );
-            stream.shutdown(Shutdown::Both).unwrap();
+            sender_map.lock().unwrap().remove(&peer_addr);
+            match stream.shutdown(Shutdown::Both) {
+                Ok(()) => (),
+                Err(e) => {println!("Shutdown error {}", e)}
+            }
             false
         }
     } {}
